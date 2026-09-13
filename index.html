@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>자동 재생 음악 플레이어</title>
+    <style>
+        body {
+            font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .player-container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 350px;
+            text-align: center;
+        }
+        h2 {
+            margin-top: 0;
+            color: #333;
+        }
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .track-list {
+            list-style: none;
+            padding: 0;
+            text-align: left;
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .track-item {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+        }
+        .track-item:hover {
+            background-color: #f9f9f9;
+        }
+        .track-item.active {
+            background-color: #e3f2fd;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .track-item:last-child {
+            border-bottom: none;
+        }
+        .status {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+        }
+        /* 오디오 컨트롤 숨기기 (커스텀 버튼 사용) */
+        audio {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="player-container">
+    <h2>🎵 MP3 플레이어</h2>
+    
+    <!-- 파일 입력 (최대 3개까지 허용) -->
+    <input type="file" id="fileInput" accept="audio/*" multiple>
+    
+    <!-- 오디오 엘리먼트 -->
+    <audio id="audioPlayer"></audio>
+
+    <div class="controls">
+        <button id="playPauseBtn">재생</button>
+        <button id="stopBtn">정지</button>
+    </div>
+
+    <div class="status" id="statusText">파일을 선택하세요</div>
+    
+    <!-- 재생 목록 -->
+    <ul class="track-list" id="trackList"></ul>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const audioPlayer = document.getElementById('audioPlayer');
+    const playPauseBtn = document.getElementById('playPauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const trackListEl = document.getElementById('trackList');
+    const statusText = document.getElementById('statusText');
+
+    let tracks = []; // 오디오 객체와 URL 저장을 위한 배열
+
+    // 파일 업로드 처리
+    fileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        
+        // 파일이 3개를 넘어가지 않도록 제한
+        if (files.length > 3) {
+            alert("최대 3개까지 선택할 수 있습니다.");
+            fileInput.value = '';
+            return;
+        }
+
+        if (files.length === 0) return;
+
+        // 이전 목록 초기화
+        tracks = [];
+        trackListEl.innerHTML = '';
+
+        files.forEach((file, index) => {
+            const url = URL.createObjectURL(file);
+            tracks.push({ name: file.name, url: url });
+
+            // 리스트에 항목 추가
+            const li = document.createElement('li');
+            li.className = 'track-item';
+            li.textContent = `곡 : `;
+            li.dataset.index = index;
+            
+            // 리스트 클릭 시 해당 곡 재생
+            li.addEventListener('click', () => {
+                playTrack(index);
+            });
+
+            trackListEl.appendChild(li);
+        });
+
+        // 첫 번째 곡 로드 및 준비
+        loadTrack(0);
+        statusText.textContent = `개의 곡이 로드되었습니다.`;
+        
+        // 자동 재생 설정 (브라우저 정책상 사용자 상호작용 이후 가능)
+        // 초기에는 정지 상태 유지, 사용자가 재생 버튼을 누르면 시작
+        updatePlayButton();
+    });
+
+    // 곡 로드
+    function loadTrack(index) {
+        if (tracks.length === 0) return;
+        
+        audioPlayer.src = tracks[index].url;
+        updateActiveTrack(index);
+    }
+
+    // 재생 목록에서 현재 곡 표시
+    function updateActiveTrack(index) {
+        const items = document.querySelectorAll('.track-item');
+        items.forEach((item, i) => {
+            if (i === index) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+    }
+
+    // 곡 재생 시작
+    function playTrack(index) {
+        loadTrack(index);
+        audioPlayer.play();
+        updatePlayButton();
+        statusText.textContent = `재생 중: `;
+    }
+
+    // 자동 재생: 곡이 끝났을 때 다음 곡으로 이동
+    audioPlayer.addEventListener('ended', () => {
+        const currentIndex = getCurrentIndex();
+        const nextIndex = currentIndex + 1;
+
+        if (nextIndex < tracks.length) {
+            playTrack(nextIndex);
+        } else {
+            // 모든 곡이 끝남
+            playPauseBtn.textContent = "재생";
+            statusText.textContent = "재생이 완료되었습니다.";
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+        }
+    });
+
+    // 오디오 이벤트: 에러 처리 등
+    audioPlayer.addEventListener('error', (e) => {
+        console.error("오디오 로드 실패", e);
+        statusText.textContent = "오디오 로드 중 오류 발생";
+    });
+
+    // 재생/일시정지 토글
+    playPauseBtn.addEventListener('click', () => {
+        if (audioPlayer.paused) {
+            // 만약 소스가 없다면 첫 번째 곡 로드
+            if (!audioPlayer.src && tracks.length > 0) {
+                loadTrack(0);
+            }
+            audioPlayer.play();
+            updatePlayButton();
+            statusText.textContent = `재생 중: `;
+        } else {
+            audioPlayer.pause();
+            updatePlayButton();
+            statusText.textContent = "일시정지됨";
+        }
+    });
+
+    // 정지 버튼
+    stopBtn.addEventListener('click', () => {
+        audioPlayer.pause();
+        audioPlayer.currentTime = 0;
+        playPauseBtn.textContent = "재생";
+        statusText.textContent = "정지됨";
+    });
+
+    // 버튼 상태 업데이트
+    function updatePlayButton() {
+        if (audioPlayer.paused) {
+            playPauseBtn.textContent = "재생";
+        } else {
+            playPauseBtn.textContent = "일시정지";
+        }
+    }
+
+    // 현재 재생 중인 인덱스 찾기
+    function getCurrentIndex() {
+        for (let i = 0; i < tracks.length; i++) {
+            if (audioPlayer.src === tracks[i].url) {
+                return i;
+            }
+        }
+        return 0; // 기본값
+    }
+</script>
+
+</body>
+</html>
